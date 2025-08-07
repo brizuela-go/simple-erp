@@ -13,6 +13,7 @@ import {
   db,
 } from "@/lib/firebase";
 import { Client } from "@/types";
+import { collection, where } from "firebase/firestore";
 
 // Get all clients
 export const getClients = async (): Promise<Client[]> => {
@@ -84,7 +85,18 @@ export const updateClient = async (clientId: string, data: Partial<Client>) => {
   });
 };
 
-// Delete client
+// services/clients.ts - Add this function
 export const deleteClient = async (clientId: string) => {
+  // Check if client has orders
+  const ordersQuery = query(
+    collection(db, "orders"),
+    where("clientId", "==", clientId)
+  );
+  const ordersSnapshot = await getDocs(ordersQuery);
+
+  if (!ordersSnapshot.empty) {
+    throw new Error("No se puede eliminar un cliente con pedidos asociados");
+  }
+
   await deleteDoc(doc(db, "clients", clientId));
 };

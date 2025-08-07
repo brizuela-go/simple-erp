@@ -153,3 +153,34 @@ export const getStaffAttendanceSummary = async (
 
   return summary;
 };
+// services/attendance.ts - Add these functions
+export const markAbsence = async (
+  staffId: string,
+  staffName: string
+): Promise<string> => {
+  const today = format(new Date(), "yyyy-MM-dd");
+
+  // Check if already has attendance today
+  const q = query(
+    attendanceCollection,
+    where("staffId", "==", staffId),
+    where("date", "==", today)
+  );
+
+  const existing = await getDocs(q);
+  if (!existing.empty) {
+    throw new Error("Ya se registró asistencia para hoy");
+  }
+
+  const docRef = await addDoc(attendanceCollection, {
+    staffId,
+    staffName,
+    date: today,
+    isAbsent: true,
+    checkIn: serverTimestamp(),
+    checkOut: serverTimestamp(),
+    createdAt: serverTimestamp(),
+  });
+
+  return docRef.id;
+};

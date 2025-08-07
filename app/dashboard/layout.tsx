@@ -147,16 +147,6 @@ export default function DashboardLayout({
     <SidebarLayout
       items={filteredItems}
       basePath="/dashboard"
-      sidebarTop={
-        <div className="flex items-center justify-between w-full px-2">
-          <div>
-            <h2 className="text-lg font-semibold">ERP Dashboard</h2>
-            <p className="text-sm text-muted-foreground">
-              {user?.displayName || user?.primaryEmail}
-            </p>
-          </div>
-        </div>
-      }
       sidebarBottom={
         <button
           onClick={handleSignOut}

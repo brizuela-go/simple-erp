@@ -13,10 +13,17 @@ import {
 import { OrderForm } from "@/components/orders/orders-form";
 import { OrderKanban } from "@/components/orders/orders-kanban";
 import { OrderTable } from "@/components/orders/orders-table";
+import { Order } from "@/types";
 
 export default function OrdersPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
+  const [editingOrder, setEditingOrder] = useState<string | null>(null);
+
+  const handleEdit = (order: Order) => {
+    setEditingOrder(order.id ?? null);
+    setIsFormOpen(true);
+  };
 
   return (
     <div className="space-y-6">
@@ -48,7 +55,7 @@ export default function OrdersPage() {
         </TabsList>
 
         <TabsContent value="table" className="mt-6">
-          <OrderTable />
+          <OrderTable onEdit={handleEdit} />
         </TabsContent>
 
         <TabsContent value="kanban" className="mt-6">
@@ -59,7 +66,9 @@ export default function OrdersPage() {
       <Sheet open={isFormOpen} onOpenChange={setIsFormOpen}>
         <SheetContent className="w-full sm:max-w-lg p-4">
           <SheetHeader>
-            <SheetTitle className="-ml-4">Nuevo Pedido</SheetTitle>
+            <SheetTitle className="-ml-4">
+              {editingOrder ? "Editar Pedido" : "Nuevo Pedido"}
+            </SheetTitle>
           </SheetHeader>
           <OrderForm onClose={() => setIsFormOpen(false)} />
         </SheetContent>

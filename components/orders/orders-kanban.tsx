@@ -1,7 +1,15 @@
 "use client";
 
 import { SetStateAction, useEffect, useState } from "react";
-import { DndContext, closestCorners, DragEndEvent } from "@dnd-kit/core";
+import {
+  DndContext,
+  closestCorners,
+  DragEndEvent,
+  useSensors,
+  useSensor,
+  MouseSensor,
+  TouchSensor,
+} from "@dnd-kit/core";
 import { Order, OrderStatus } from "@/types";
 import { subscribeToOrders, updateOrderStatus } from "@/services/orders";
 import { toast } from "sonner";
@@ -57,6 +65,20 @@ export function OrderKanban() {
     }
   };
 
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 200,
+        tolerance: 5,
+      },
+    })
+  );
+
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -75,7 +97,11 @@ export function OrderKanban() {
   }
 
   return (
-    <DndContext collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragEnd={handleDragEnd}
+    >
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {columns.map((column) => (
           <KanbanColumn

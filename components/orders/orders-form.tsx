@@ -10,7 +10,7 @@ import { OrderStatus } from "@/types";
 import { Loader2 } from "lucide-react";
 import { createOrder } from "@/services/orders";
 import { ClientCombobox } from "../clients/clients-combobox";
-import { generateTicketPDF } from "@/lib/pdf-generator";
+import { generateTicketPDFExtended } from "@/lib/pdf-generator";
 
 interface OrderFormProps {
   onClose: () => void;
@@ -66,7 +66,7 @@ export function OrderForm({ onClose }: OrderFormProps) {
       const orderId = await createOrder(orderData);
 
       // Generate PDF ticket
-      await generateTicketPDF({ ...orderData, id: orderId });
+      await generateTicketPDFExtended({ ...orderData, id: orderId });
 
       toast.success("Pedido creado exitosamente", { id: toastId });
       onClose();

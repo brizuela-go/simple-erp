@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 import {
   TrendingUp,
   TrendingDown,
@@ -19,9 +20,12 @@ import {
   Clock,
   Target,
   AlertCircle,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 import { getReportSummary } from "@/services/reports";
 
 interface SummaryReportProps {
@@ -30,13 +34,28 @@ interface SummaryReportProps {
   period: "weekly" | "monthly" | "yearly";
 }
 
+interface SummaryData {
+  totalRevenue: number;
+  totalOrders: number;
+  activeClients: number;
+  averageAttendance: number;
+  pendingPayments: number;
+  topClient: {
+    name: string;
+    revenue: number;
+    percentage: number;
+  } | null;
+  collectionRate: number;
+}
+
 export function SummaryReport({
   startDate,
   endDate,
   period,
 }: SummaryReportProps) {
-  const [summary, setSummary] = useState<any>(null);
+  const [summary, setSummary] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadSummary();
@@ -44,14 +63,24 @@ export function SummaryReport({
 
   const loadSummary = async () => {
     setLoading(true);
+    setError(null);
+
     try {
       const data = await getReportSummary(startDate, endDate);
       setSummary(data);
     } catch (error) {
       console.error("Error loading summary:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Error al cargar el resumen";
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRetry = () => {
+    loadSummary();
   };
 
   if (loading) {
@@ -67,64 +96,118 @@ export function SummaryReport({
     );
   }
 
-  if (!summary) return null;
+  if (error) {
+    return (
+      <Card className="glass-card">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+          <h3 className="text-lg font-medium mb-2">Error al cargar datos</h3>
+          <p className="text-muted-foreground text-center mb-4">{error}</p>
+          <Button onClick={handleRetry} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Reintentar
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!summary) {
+    return (
+      <Card className="glass-card">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+          <p className="text-muted-foreground">
+            No hay datos disponibles para este período
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const metrics = [
     {
       title: "Ingresos Totales",
       value: formatCurrency(summary.totalRevenue),
-      change: summary.revenueChange,
       icon: DollarSign,
+      color: "text-green-600",
     },
     {
       title: "Pedidos",
-      value: summary.totalOrders,
-      change: summary.ordersChange,
+      value: summary.totalOrders.toString(),
       icon: ShoppingCart,
+      color: "text-blue-600",
     },
     {
       title: "Clientes Activos",
-      value: summary.activeClients,
-      change: summary.clientsChange,
+      value: summary.activeClients.toString(),
       icon: Users,
+      color: "text-purple-600",
     },
     {
       title: "Asistencia Promedio",
       value: `${summary.averageAttendance}%`,
-      change: summary.attendanceChange,
       icon: Clock,
+      color: "text-orange-600",
     },
   ];
 
   const insights = [
     {
-      type: summary.revenueChange > 0 ? "positive" : "negative",
-      title: "Tendencia de Ingresos",
-      description: `Los ingresos han ${
-        summary.revenueChange > 0 ? "aumentado" : "disminuido"
-      } un ${Math.abs(
-        summary.revenueChange
-      )}% comparado con el período anterior.`,
-    },
-    {
       type: summary.topClient ? "info" : "neutral",
       title: "Cliente Principal",
       description: summary.topClient
-        ? `${summary.topClient.name} representa el ${summary.topClient.percentage}% de los ingresos totales.`
-        : "No hay datos suficientes de clientes.",
+        ? `${summary.topClient.name} representa el ${
+            summary.topClient.percentage
+          }% de los ingresos totales con ${formatCurrency(
+            summary.topClient.revenue
+          )}.`
+        : "No hay datos suficientes de clientes para este período.",
     },
     {
       type:
         summary.pendingPayments > summary.totalRevenue * 0.3
           ? "warning"
+          : summary.pendingPayments > summary.totalRevenue * 0.15
+          ? "caution"
           : "positive",
       title: "Estado de Cobranza",
       description: `Hay ${formatCurrency(
         summary.pendingPayments
       )} en pagos pendientes, representando el ${(
-        (summary.pendingPayments / summary.totalRevenue) *
+        (summary.pendingPayments / Math.max(summary.totalRevenue, 1)) *
         100
-      ).toFixed(1)}% de los ingresos.`,
+      ).toFixed(1)}% de los ingresos. Tasa de cobro: ${
+        summary.collectionRate
+      }%.`,
+    },
+    {
+      type:
+        summary.averageAttendance >= 90
+          ? "positive"
+          : summary.averageAttendance >= 80
+          ? "caution"
+          : "warning",
+      title: "Rendimiento del Personal",
+      description: `La asistencia promedio es del ${
+        summary.averageAttendance
+      }%${
+        summary.averageAttendance < 90
+          ? ". Se recomienda implementar estrategias para mejorar la puntualidad y asistencia."
+          : ". El equipo mantiene una excelente asistencia."
+      }`,
+    },
+    {
+      type: summary.totalOrders > 0 ? "info" : "neutral",
+      title: "Actividad Comercial",
+      description:
+        summary.totalOrders > 0
+          ? `Se procesaron ${
+              summary.totalOrders
+            } pedidos con un valor promedio de ${formatCurrency(
+              summary.totalRevenue / summary.totalOrders
+            )}.`
+          : "No hay actividad comercial registrada en este período.",
     },
   ];
 
@@ -135,9 +218,25 @@ export function SummaryReport({
       case "negative":
         return <TrendingDown className="h-4 w-4 text-red-600" />;
       case "warning":
-        return <AlertCircle className="h-4 w-4 text-yellow-600" />;
+        return <AlertCircle className="h-4 w-4 text-red-600" />;
+      case "caution":
+        return <AlertTriangle className="h-4 w-4 text-yellow-600" />;
       default:
         return <Target className="h-4 w-4 text-blue-600" />;
+    }
+  };
+
+  const getInsightBadgeVariant = (type: string) => {
+    switch (type) {
+      case "positive":
+        return "default";
+      case "negative":
+      case "warning":
+        return "destructive";
+      case "caution":
+        return "secondary";
+      default:
+        return "outline";
     }
   };
 
@@ -151,29 +250,13 @@ export function SummaryReport({
               <CardTitle className="text-sm font-medium">
                 {metric.title}
               </CardTitle>
-              <metric.icon className={`h-4 w-4 `} />
+              <metric.icon className={`h-4 w-4 ${metric.color}`} />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{metric.value}</div>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                {metric.change !== 0 && (
-                  <>
-                    {metric.change > 0 ? (
-                      <TrendingUp className="h-3 w-3 text-green-500" />
-                    ) : (
-                      <TrendingDown className="h-3 w-3 text-red-500" />
-                    )}
-                    <span
-                      className={
-                        metric.change > 0 ? "text-green-600" : "text-red-600"
-                      }
-                    >
-                      {Math.abs(metric.change)}%
-                    </span>
-                  </>
-                )}
-                vs período anterior
-              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Período actual
+              </p>
             </CardContent>
           </Card>
         ))}
@@ -193,21 +276,8 @@ export function SummaryReport({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Progress Bars */}
+          {/* Collection Rate Progress */}
           <div className="space-y-4">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">Meta de Ventas</span>
-                <span className="text-sm text-muted-foreground">
-                  {formatCurrency(summary.totalRevenue)} /{" "}
-                  {formatCurrency(summary.salesTarget)}
-                </span>
-              </div>
-              <Progress
-                value={(summary.totalRevenue / summary.salesTarget) * 100}
-              />
-            </div>
-
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium">Tasa de Cobro</span>
@@ -215,25 +285,14 @@ export function SummaryReport({
                   {summary.collectionRate}%
                 </span>
               </div>
-              <Progress
-                value={summary.collectionRate}
-                className="bg-green-100"
-              />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">
-                  Ocupación del Personal
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  {summary.staffUtilization}%
-                </span>
-              </div>
-              <Progress
-                value={summary.staffUtilization}
-                className="bg-blue-100"
-              />
+              <Progress value={summary.collectionRate} className="h-2" />
+              <p className="text-xs text-muted-foreground mt-1">
+                {summary.collectionRate >= 85
+                  ? "Excelente gestión de cobranza"
+                  : summary.collectionRate >= 70
+                  ? "Gestión de cobranza regular"
+                  : "Requiere mejorar gestión de cobranza"}
+              </p>
             </div>
           </div>
 
@@ -243,11 +302,26 @@ export function SummaryReport({
             {insights.map((insight, index) => (
               <div
                 key={index}
-                className="flex gap-3 p-3 rounded-lg bg-muted/50"
+                className="flex gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted/70 transition-colors"
               >
                 {getInsightIcon(insight.type)}
                 <div className="flex-1">
-                  <p className="text-sm font-medium">{insight.title}</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-sm font-medium">{insight.title}</p>
+                    <Badge
+                      variant={getInsightBadgeVariant(insight.type)}
+                      className="text-xs"
+                    >
+                      {insight.type === "positive"
+                        ? "Bien"
+                        : insight.type === "negative" ||
+                          insight.type === "warning"
+                        ? "Atención"
+                        : insight.type === "caution"
+                        ? "Revisar"
+                        : "Info"}
+                    </Badge>
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {insight.description}
                   </p>
@@ -256,29 +330,51 @@ export function SummaryReport({
             ))}
           </div>
 
-          {/* Top Products/Services */}
-          {summary.topProducts && summary.topProducts.length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium mb-3">
-                Productos/Servicios Principales
-              </h4>
-              <div className="space-y-2">
-                {summary.topProducts.map((product: any, index: number) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between"
-                  >
-                    <span className="text-sm">{product.name}</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary">
-                        {product.quantity} ventas
-                      </Badge>
-                      <span className="text-sm font-medium">
-                        {formatCurrency(product.revenue)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+          {/* Additional Stats */}
+          {summary.totalRevenue > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t">
+              <div className="text-center">
+                <p className="text-lg font-bold">
+                  {formatCurrency(
+                    summary.totalRevenue / Math.max(summary.totalOrders, 1)
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground">Ticket Promedio</p>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold">
+                  {formatCurrency(
+                    summary.totalRevenue / Math.max(summary.activeClients, 1)
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Ingreso por Cliente
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold">
+                  {(
+                    summary.totalOrders / Math.max(summary.activeClients, 1)
+                  ).toFixed(1)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Pedidos por Cliente
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold">
+                  {summary.pendingPayments > 0
+                    ? Math.round(
+                        ((summary.totalRevenue - summary.pendingPayments) /
+                          summary.totalRevenue) *
+                          100
+                      )
+                    : 100}
+                  %
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Efectividad de Cobro
+                </p>
               </div>
             </div>
           )}

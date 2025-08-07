@@ -1,15 +1,17 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { UserButton } from "@stackframe/stack";
+import { UserButton, useUser } from "@stackframe/stack";
 import { LucideIcon, Menu, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Separator } from "../ui/separator";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "../ui/sheet";
 import { Button } from "../ui/button";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 function useSegment(basePath: string) {
   const path = usePathname();
@@ -111,6 +113,38 @@ export default function SidebarLayout(props: {
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { theme, setTheme } = useTheme();
+  const user = useUser({ or: "redirect" });
+
+  const [companyName, setCompanyName] = useState("ERP Alatriste");
+
+  useEffect(() => {
+    // Load company name
+    const loadCompanyName = async () => {
+      try {
+        const docSnap = await getDoc(doc(db, "settings/company"));
+        if (docSnap.exists()) {
+          setCompanyName(docSnap.data().name || "ERP Alatriste");
+        }
+      } catch (error) {
+        console.error("Error loading company name:", error);
+      }
+    };
+
+    loadCompanyName();
+
+    // Listen for company name changes
+    const handleCompanyNameChange = () => {
+      const savedName = localStorage.getItem("companyName");
+      if (savedName) {
+        setCompanyName(savedName);
+      }
+    };
+
+    window.addEventListener("companyNameChanged", handleCompanyNameChange);
+    return () => {
+      window.removeEventListener("companyNameChanged", handleCompanyNameChange);
+    };
+  }, []);
 
   return (
     <div className="flex h-screen">
@@ -118,7 +152,16 @@ export default function SidebarLayout(props: {
       <div className="hidden md:flex md:w-64 md:flex-col border-r bg-card/40 backdrop-blur-lg">
         <SidebarContent
           items={props.items}
-          sidebarTop={props.sidebarTop}
+          sidebarTop={
+            <div className="flex items-center justify-between w-full px-2">
+              <div>
+                <h2 className="text-lg font-semibold">{companyName}</h2>
+                <p className="text-sm text-muted-foreground">
+                  {user?.displayName || user?.primaryEmail}
+                </p>
+              </div>
+            </div>
+          }
           sidebarBottom={props.sidebarBottom}
           basePath={props.basePath}
         />

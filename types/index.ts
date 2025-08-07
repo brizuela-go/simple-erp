@@ -12,7 +12,15 @@ export enum UserRole {
   STAFF = "staff",
 }
 
-// Types
+export interface OrderItem {
+  id?: string;
+  name: string;
+  quantity: number;
+  price: number;
+  total: number;
+}
+
+// Extended Order interface (optional)
 export interface Order {
   id?: string;
   clientId: string;
@@ -27,6 +35,21 @@ export interface Order {
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
   createdBy?: string;
+
+  // Optional additional fields for more detailed orders:
+  items?: OrderItem[]; // Individual items in the order
+  subtotal?: number; // Subtotal before discounts/taxes
+  discount?: number; // Discount amount
+  discountPercentage?: number; // Discount percentage
+  tax?: number; // Tax amount
+  taxPercentage?: number; // Tax percentage
+  route?: string; // Delivery route
+  dueDate?: Timestamp | Date; // Due date for credit orders
+  deliveryDate?: Timestamp | Date; // Expected delivery date
+  deliveryAddress?: string; // Delivery address (if different from client)
+  orderNumber?: string; // Custom order number
+  priority?: "low" | "normal" | "high"; // Order priority
+  tags?: string[]; // Order tags/categories
 }
 
 export interface Client {
@@ -72,6 +95,7 @@ export interface Attendance {
   checkOut?: Timestamp;
   date: string; // YYYY-MM-DD format
   createdAt?: Timestamp;
+  isAbsent?: boolean;
 }
 
 export interface Payment {

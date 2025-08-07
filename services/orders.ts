@@ -117,3 +117,24 @@ export const updateOrder = async (orderId: string, data: Partial<Order>) => {
 export const deleteOrder = async (orderId: string) => {
   await deleteDoc(doc(db, "orders", orderId));
 };
+
+export const getClientOrders = async (clientId: string): Promise<Order[]> => {
+  const q = query(
+    ordersCollection,
+    where("clientId", "==", clientId),
+    orderBy("createdAt", "desc")
+  );
+
+  const snapshot = await getDocs(q);
+  const orders: Order[] = [];
+
+  for (const docSnap of snapshot.docs) {
+    const orderData = docSnap.data() as Order;
+    orders.push({
+      ...orderData,
+      id: docSnap.id,
+    });
+  }
+
+  return orders;
+};

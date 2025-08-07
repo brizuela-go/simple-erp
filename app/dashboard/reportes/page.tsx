@@ -25,6 +25,7 @@ import {
   Users,
   ShoppingCart,
   Clock,
+  RefreshCw,
 } from "lucide-react";
 import {
   format,
@@ -40,7 +41,14 @@ import {
 } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
-import { generateFullReport, saveReportToStorage } from "@/services/reports";
+import {
+  generateFullReport,
+  saveReportToStorage,
+  getReportSummary,
+  getOrdersReportData,
+  getClientsReportData,
+  getAttendanceReportData,
+} from "@/services/reports";
 
 type ReportPeriod = "weekly" | "monthly" | "yearly" | "custom";
 
@@ -49,6 +57,7 @@ export default function ReportsPage() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [generating, setGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState("summary");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const getDateRange = () => {
     switch (period) {
@@ -87,6 +96,7 @@ export default function ReportsPage() {
         setSelectedDate(subYears(selectedDate, 1));
         break;
     }
+    setRefreshKey((prev) => prev + 1);
   };
 
   const handleNextPeriod = () => {
@@ -101,6 +111,7 @@ export default function ReportsPage() {
         setSelectedDate(subYears(selectedDate, -1));
         break;
     }
+    setRefreshKey((prev) => prev + 1);
   };
 
   const getPeriodLabel = () => {
@@ -122,32 +133,67 @@ export default function ReportsPage() {
   };
 
   const handleGenerateReport = async () => {
+    if (generating) return;
+
     setGenerating(true);
-    const toastId = toast.loading("Generando reporte...");
+    const toastId = toast.loading("Generando reporte completo...");
 
     try {
       const { start, end } = getDateRange();
-      const reportData = await generateFullReport(start, end, period);
 
-      // Save to Firebase Storage
-      const fileName = `reporte_${period}_${format(
+      // Generate comprehensive PDF report
+      const pdfBlob = await generateFullReport(start, end, period);
+
+      // Create filename with proper naming convention
+      const fileName = `reporte_completo_${period}_${format(
         selectedDate,
         "yyyy-MM-dd"
-      )}.pdf`;
-      await saveReportToStorage(reportData, fileName);
+      )}_${Date.now()}.pdf`;
+
+      // Save to Firebase Storage
+      const downloadURL = await saveReportToStorage(pdfBlob, fileName);
+
+      // Create download link and trigger download
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(pdfBlob);
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(link.href);
 
       toast.success("Reporte generado y guardado exitosamente", {
         id: toastId,
+        description: "El archivo se ha descargado y guardado en el sistema",
       });
+
+      // Refresh the history to show the new report
+      setRefreshKey((prev) => prev + 1);
     } catch (error) {
       console.error("Error generating report:", error);
-      toast.error("Error al generar el reporte", { id: toastId });
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido al generar el reporte";
+      toast.error("Error al generar el reporte", {
+        id: toastId,
+        description: errorMessage,
+      });
     } finally {
       setGenerating(false);
     }
   };
 
+  const handlePeriodChange = (newPeriod: ReportPeriod) => {
+    setPeriod(newPeriod);
+    setRefreshKey((prev) => prev + 1);
+  };
+
+  const handleRefreshData = () => {
+    setRefreshKey((prev) => prev + 1);
+    toast.success("Datos actualizados");
+  };
+
   const dateRange = getDateRange();
+  const isCurrentOrFuture = selectedDate >= new Date();
 
   return (
     <div className="space-y-6">
@@ -155,22 +201,36 @@ export default function ReportsPage() {
         <div>
           <h1 className="swiss-text-title">Reportes</h1>
           <p className="text-muted-foreground">
-            Análisis detallado del negocio
+            Análisis detallado del negocio - {getPeriodLabel()}
           </p>
         </div>
-        <Button onClick={handleGenerateReport} disabled={generating}>
-          {generating ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Generando...
-            </>
-          ) : (
-            <>
-              <Download className="h-4 w-4 mr-2" />
-              Generar PDF
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleRefreshData}
+            variant="outline"
+            size="icon"
+            title="Actualizar datos"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={handleGenerateReport}
+            disabled={generating}
+            className="min-w-[140px]"
+          >
+            {generating ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Generando...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-2" />
+                Generar PDF
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Period Selector */}
@@ -179,10 +239,7 @@ export default function ReportsPage() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <Calendar className="h-5 w-5 text-muted-foreground" />
-              <Select
-                value={period}
-                onValueChange={(v) => setPeriod(v as ReportPeriod)}
-              >
+              <Select value={period} onValueChange={handlePeriodChange}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue />
                 </SelectTrigger>
@@ -199,6 +256,7 @@ export default function ReportsPage() {
                 variant="outline"
                 size="icon"
                 onClick={handlePreviousPeriod}
+                title="Período anterior"
               >
                 ←
               </Button>
@@ -209,7 +267,8 @@ export default function ReportsPage() {
                 variant="outline"
                 size="icon"
                 onClick={handleNextPeriod}
-                disabled={selectedDate >= new Date()}
+                disabled={isCurrentOrFuture}
+                title="Período siguiente"
               >
                 →
               </Button>
@@ -244,6 +303,7 @@ export default function ReportsPage() {
 
         <TabsContent value="summary" className="mt-6">
           <SummaryReport
+            key={`summary-${refreshKey}`}
             startDate={dateRange.start}
             endDate={dateRange.end}
             period={period === "custom" ? "monthly" : period}
@@ -252,6 +312,7 @@ export default function ReportsPage() {
 
         <TabsContent value="orders" className="mt-6">
           <OrdersReport
+            key={`orders-${refreshKey}`}
             startDate={dateRange.start}
             endDate={dateRange.end}
             period={period === "custom" ? "monthly" : period}
@@ -260,6 +321,7 @@ export default function ReportsPage() {
 
         <TabsContent value="clients" className="mt-6">
           <ClientsReport
+            key={`clients-${refreshKey}`}
             startDate={dateRange.start}
             endDate={dateRange.end}
             period={period === "custom" ? "monthly" : period}
@@ -268,6 +330,7 @@ export default function ReportsPage() {
 
         <TabsContent value="attendance" className="mt-6">
           <AttendanceReport
+            key={`attendance-${refreshKey}`}
             startDate={dateRange.start}
             endDate={dateRange.end}
             period={period === "custom" ? "monthly" : period}
@@ -275,7 +338,7 @@ export default function ReportsPage() {
         </TabsContent>
 
         <TabsContent value="history" className="mt-6">
-          <ReportHistory />
+          <ReportHistory key={`history-${refreshKey}`} />
         </TabsContent>
       </Tabs>
     </div>
